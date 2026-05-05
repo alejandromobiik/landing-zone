@@ -45,6 +45,12 @@ locals {
   # Ejemplo: "rg-platform-lz-dev", "aks-lz-dev", "kv-lz-dev"
   name_suffix = "-${var.project_name}-${var.environment}"
 
+  # Sufijo único para recursos con nombres globalmente únicos en Azure
+  # (Key Vault, Storage Accounts, ACR). Usa los últimos 5 caracteres del
+  # subscription ID para garantizar unicidad entre suscripciones.
+  # Ejemplo: "-lz-dev-66635"
+  unique_suffix = "${local.name_suffix}-${substr(data.azurerm_subscription.current.subscription_id, 31, 5)}"
+
   # Tags completos que se aplican a TODOS los recursos.
   # merge() combina dos maps: si la misma clave aparece en ambos,
   # gana el segundo. Esto permite que cada módulo agregue sus propios tags
@@ -232,4 +238,63 @@ module "policy" {
   subscription_id   = data.azurerm_subscription.current.id
   allowed_locations = var.allowed_locations
   tags              = local.common_tags
+}
+
+# =============================================================================
+# MÓDULO KEY VAULT — Caja fuerte de secretos con acceso solo privado
+#
+# Crea un Key Vault Standard con:
+#   - public_network_access_enabled = false  (invisible desde internet)
+#   - Private Endpoint en subnet-private-endpoints del spoke
+#   - DNS zone group que registra el PE en la zona privada del hub
+#   - enable_rbac_authorization = true (control de acceso via roles, no access policies)
+#   - purge_protection = true (protección contra borrado accidental)
+#
+# Los secrets de la aplicación se guardarán aquí en las fases siguientes.
+# El módulo aks asignará el rol "Key Vault Secrets User" a la identidad
+# del cluster para que los pods puedan leer secretos sin contraseñas.
+#
+# COSTO: ~$7/mes (Private Endpoint ~$0.01/h + ops de KV ~$0/mes en dev)
+# =============================================================================
+module "keyvault" {
+  source = "./modules/keyvault"
+
+  location                = var.location
+  name_suffix             = local.unique_suffix
+  tags                    = local.common_tags
+  resource_group_name     = azurerm_resource_group.spoke_app.name
+  hub_resource_group_name = azurerm_resource_group.network_hub.name
+  tenant_id               = data.azurerm_client_config.current.tenant_id
+
+  # Outputs del módulo network
+  subnet_private_endpoints_id  = module.network.subnet_private_endpoints_id
+  private_dns_zone_keyvault_id = module.network.private_dns_zone_keyvault_id
+
+  depends_on = [module.network]
+}
+
+# =============================================================================
+# MÓDULO ACR — Azure Container Registry (SKU Basic)
+#
+# Crea un registry privado de imágenes de contenedor:
+#   - SKU Basic: ~$5/mes (suficiente para dev, sin Private Endpoint)
+#   - admin_enabled = false: autenticación solo via Managed Identity
+#   - Nombre: acrlzdev (los guiones no son válidos en nombres de ACR)
+#
+# El módulo aks asignará el rol "AcrPull" a la kubelet identity del cluster,
+# permitiendo que AKS descargue imágenes sin contraseñas ni credenciales
+# explícitas — esto es Workload Identity integrado con ACR.
+#
+# Los pipelines de CI/CD usarán OIDC (ya configurado en bootstrap) para
+# hacer docker push al registry.
+#
+# COSTO: ~$5/mes (SKU Basic, 10 GB de almacenamiento incluido)
+# =============================================================================
+module "acr" {
+  source = "./modules/acr"
+
+  location            = var.location
+  name_suffix         = local.unique_suffix
+  tags                = local.common_tags
+  resource_group_name = azurerm_resource_group.spoke_app.name
 }
