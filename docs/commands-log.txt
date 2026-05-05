@@ -223,3 +223,50 @@ Rama: feat/fase3-keyvault-acr
   terraform apply "tfplan"
   # → Apply complete! Resources: 3 added, 0 changed, 1 destroyed.
   # Recursos creados: kv-lz-dev-66635 + pe-kv-lz-dev-66635 + acrlzdev66635
+
+  # Commit y push
+  cd "C:\Users\aleja\Documents\Proyectos\Path Infra\landing-zone"
+  git add infra/terraform/main.tf infra/terraform/modules/keyvault/ infra/terraform/modules/acr/ docs/commands-log.txt
+  git commit -m "feat(keyvault+acr): Key Vault Standard + Private Endpoint + ACR Basic con unique_suffix"
+  git push origin feat/fase3-keyvault-acr
+
+
+--------------------------------------------------------------------------------
+FASE 3 — Módulo aks: Azure Kubernetes Service
+Directorio: infra/terraform/
+Archivos: main.tf (módulo aks + outputs actualizados), modules/aks/, outputs.tf
+Rama: feat/fase3-aks
+--------------------------------------------------------------------------------
+
+  git checkout -b feat/fase3-aks
+
+  terraform init -upgrade
+  terraform fmt -recursive && terraform validate
+
+  # Fix: enable_auto_scaling → auto_scaling_enabled (azurerm v4)
+  # Fix: Standard_B2s no permitido en suscripción Free Trial en eastus2
+  #      → Se usa Standard_D2s_v3 (2 vCPU, 8 GB, ~$70/mes)
+
+  terraform plan -out=tfplan
+  # → Plan: 2 to add, 0 to change, 0 to destroy.
+  # Recursos: azurerm_kubernetes_cluster.main + azurerm_role_assignment.acr_pull
+
+  terraform apply "tfplan"
+  # → Apply complete! Resources: 2 added, 0 changed, 0 destroyed.
+  # Cluster: aks-lz-dev (Free tier, 1 nodo D2s_v3, SystemAssigned identity)
+  # Role: AcrPull asignado a kubelet identity sobre acrlzdev66635
+
+  # ⚠️ PARAR el cluster inmediatamente para evitar cargos del nodo (~$70/mes)
+  az aks stop --name aks-lz-dev --resource-group rg-spoke-app-lz-dev
+
+  # Obtener credenciales de kubectl (cuando necesites conectarte)
+  az aks get-credentials --name aks-lz-dev --resource-group rg-spoke-app-lz-dev
+
+  # Iniciar el cluster cuando lo necesites
+  az aks start --name aks-lz-dev --resource-group rg-spoke-app-lz-dev
+
+  # Commit y push
+  cd "C:\Users\aleja\Documents\Proyectos\Path Infra\landing-zone"
+  git add infra/terraform/main.tf infra/terraform/outputs.tf infra/terraform/modules/aks/ docs/commands-log.txt
+  git commit -m "feat(aks): cluster AKS Free tier + AcrPull para kubelet identity"
+  git push origin feat/fase3-aks

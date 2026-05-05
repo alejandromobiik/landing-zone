@@ -298,3 +298,47 @@ module "acr" {
   tags                = local.common_tags
   resource_group_name = azurerm_resource_group.spoke_app.name
 }
+
+# =============================================================================
+# MÓDULO AKS — Azure Kubernetes Service (SKU Free, 1 nodo Standard_B2s)
+#
+# Crea el cluster de Kubernetes con:
+#   - Control plane gratuito (SKU Free)
+#   - 1 nodo Standard_B2s (~$34/mes) — PARAR cuando no se trabaje
+#   - SystemAssigned identity + kubelet identity (auto-creada)
+#   - oms_agent: envía logs al Log Analytics Workspace (Container Insights)
+#   - Azure CNI: cada pod recibe IP real de la subnet-aks (10.1.0.0/22)
+#   - AcrPull: rol asignado automáticamente a la kubelet identity sobre el ACR
+#
+# ⚠️ IMPORTANTE — Parar el cluster cuando no trabajes:
+#   az aks stop --name aks-lz-dev --resource-group rg-spoke-app-lz-dev
+#   az aks start --name aks-lz-dev --resource-group rg-spoke-app-lz-dev
+#
+# COSTO: ~$0/mes control plane + ~$34/mes nodo B2s (~$1.14/día)
+#         → Parar el cluster ahorra todo el costo del nodo
+# =============================================================================
+module "aks" {
+  source = "./modules/aks"
+
+  location            = var.location
+  name_suffix         = local.name_suffix
+  tags                = local.common_tags
+  resource_group_name = azurerm_resource_group.spoke_app.name
+
+  # Outputs del módulo network
+  subnet_aks_id = module.network.subnet_aks_id
+
+  # Output del módulo monitoring — AKS enviará logs a este workspace
+  log_analytics_workspace_id = module.monitoring.workspace_resource_id
+
+  # Output del módulo acr — para asignar AcrPull a la kubelet identity
+  acr_id = module.acr.acr_id
+
+  # Configuración del cluster
+  # Standard_D2s_v3 (2 vCPU, 8 GB) — el más barato disponible en esta suscripción Free Trial en eastus2.
+  # Standard_B2s no está permitido en este tipo de suscripción. ~$70/mes → PARAR cuando no se trabaje.
+  node_vm_size = "Standard_D2s_v3"
+  node_count   = 1
+
+  depends_on = [module.network, module.monitoring, module.acr]
+}

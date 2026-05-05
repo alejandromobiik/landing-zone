@@ -102,3 +102,52 @@ output "project_name" {
   description = "Nombre corto del proyecto usado como prefijo en los nombres de recursos."
   value       = var.project_name
 }
+
+# =============================================================================
+# OUTPUTS DE INFRAESTRUCTURA — Añadidos al completar los módulos de Fase 3
+# =============================================================================
+
+output "log_analytics_workspace_id" {
+  description = "ARM Resource ID del Log Analytics Workspace (law-lz-dev). Usado para configurar Diagnostic Settings en recursos futuros."
+  value       = module.monitoring.workspace_resource_id
+}
+
+output "log_analytics_workspace_name" {
+  description = "Nombre del Log Analytics Workspace."
+  value       = module.monitoring.workspace_name
+}
+
+output "keyvault_uri" {
+  description = "URI del Key Vault (ej: https://kv-lz-dev-66635.vault.azure.net/). La aplicación lo usa para leer secretos."
+  value       = module.keyvault.keyvault_uri
+}
+
+output "keyvault_name" {
+  description = "Nombre del Key Vault."
+  value       = module.keyvault.keyvault_name
+}
+
+output "acr_login_server" {
+  description = "URL de login del ACR (ej: acrlzdev66635.azurecr.io). Los pipelines de CI/CD hacen docker push aquí."
+  value       = module.acr.acr_login_server
+}
+
+output "acr_name" {
+  description = "Nombre del ACR."
+  value       = module.acr.acr_name
+}
+
+output "aks_cluster_name" {
+  description = "Nombre del cluster AKS (ej: aks-lz-dev). Usar en: az aks get-credentials --name <aks_cluster_name> --resource-group rg-spoke-app-lz-dev"
+  value       = module.aks.aks_name
+}
+
+output "aks_fqdn" {
+  description = "FQDN del API server de Kubernetes (URL a la que kubectl se conecta)."
+  value       = module.aks.aks_fqdn
+}
+
+output "kubelet_identity_object_id" {
+  description = "Object ID de la kubelet identity de AKS. Usar para asignar roles RBAC adicionales (ej: Key Vault Secrets User)."
+  value       = module.aks.kubelet_identity_object_id
+}
