@@ -108,6 +108,12 @@ Archivos: main.tf
 
   # Generar el plan de ejecución y guardarlo en un archivo binario
   # -out=tfplan: guarda el plan para aplicarlo exactamente igual después
-  # Muestra: 3 recursos a crear (rg-network-hub-lz-dev, rg-spoke-app-lz-dev,
-  #           rg-shared-lz-dev) + 0 cambios + 0 destrucciones
+  # Resultado: 3 to add, 0 to change, 0 to destroy
+  #   + rg-network-hub-lz-dev
+  #   + rg-spoke-app-lz-dev
+  #   + rg-shared-lz-dev
   terraform plan -out=tfplan
+
+  # Aplicar exactamente el plan guardado (no vuelve a calcular ni pide confirmación)
+  # Resultado: Apply complete! Resources: 3 added, 0 changed, 0 destroyed.
+  terraform apply "tfplan"
