@@ -32,7 +32,7 @@ graph TB
     subgraph Azure["Azure — Suscripción 1989a8c1"]
         subgraph RG_PLATFORM["rg-platform"]
             SA[Storage Account\nstlztf86c66635\ntfstate remoto]
-            LAW[Log Analytics\nWorkspace]
+            LAW[Log Analytics\nlaw-lz-dev]
         end
 
         subgraph RG_HUB["rg-network-hub-lz-dev"]
@@ -43,9 +43,9 @@ graph TB
 
         subgraph RG_SPOKE["rg-spoke-app-lz-dev"]
             VNET_SPOKE[VNet Spoke\n10.1.0.0/16]
-            AKS[AKS Privado\ncluster-lz-dev]
-            ACR[ACR Basic\nacrlzdev]
-            KV[Key Vault\nkv-lz-dev]
+            AKS[AKS Free tier\naks-lz-dev]
+            ACR[ACR Basic\nacrlzdev66635]
+            KV[Key Vault\nkv-lz-dev-66635]
             NSG_SPOKE[NSG Spoke]
         end
 
@@ -133,16 +133,16 @@ landing-zone/
 | **Fase 0** | Herramientas instaladas (VS Code, Git, Azure CLI, Terraform, pwsh, kubectl, Docker) | — |
 | **Fase 1** | Repositorio GitHub con branch protection en `main` (PR obligatorio + 1 approval) | — |
 | **Fase 2** | Script `bootstrap.ps1` idempotente con `-WhatIf`, Federation Credentials OIDC, RBAC | `rg-platform`, Storage Account `stlztf86c66635`, contenedor `tfstate` |
-| **Fase 3** | Backend remoto, providers, variables, outputs, `main.tf` con 4 Resource Groups | `rg-network-hub-lz-dev`, `rg-spoke-app-lz-dev`, `rg-shared-lz-dev` |
+| **Fase 3** | Backend remoto, providers, variables, outputs, `main.tf` con 4 Resource Groups + 6 módulos (network, monitoring, policy, keyvault, acr, aks) | `rg-network-hub-lz-dev`, `rg-spoke-app-lz-dev`, `rg-shared-lz-dev`, 18 recursos de red, `law-lz-dev`, 5 policy assignments, `kv-lz-dev-66635` + PE, `acrlzdev66635`, `aks-lz-dev` + AcrPull |
 
 ### ⏳ Pendiente
 
 | Fase | Descripción |
 |------|-------------|
-| **Fase 4** | Red hub-spoke: VNets, NSGs, peering, Private DNS Zones |
-| **Fase 5** | Seguridad: Key Vault, Managed Identities, Azure Policies, Defender |
-| **Fase 6** | Observabilidad: Log Analytics, alertas de CPU, consultas KQL |
-| **Fase 7** | AKS privado + ACR Basic |
+| **Fase 4** | Diagnostic Settings en AKS, Key Vault y NSGs → Log Analytics |
+| **Fase 5** | Secreto de prueba en Key Vault, Key Vault Secrets User para AKS, Defender for Cloud |
+| **Fase 6** | Alertas de métricas (CPU AKS > 80%), alerta KQL (pods Failed), pruebas de alertas |
+| **Fase 7** | Obtener credenciales AKS, verificar `kubectl get nodes`, validar AcrPull |
 | **Fase 8** | Aplicación Flask contenerizada desplegada en AKS |
 | **Fase 9** | Pipelines GitHub Actions con OIDC (plan en PR, apply en merge, build+deploy) |
 | **Fase 10** | Documentación final, bitácora de Copilot, diagrama de arquitectura |
@@ -224,8 +224,8 @@ Un Client Secret es una contraseña que puede filtrarse si alguien accede al rep
 ### ¿Por qué ACR Basic en lugar de Premium?
 El proyecto usa una suscripción de Free Trial con presupuesto limitado. ACR Basic cuesta ~$0.17/día vs ~$1.67/día de Premium. Los Private Endpoints de ACR (que requieren Premium) se implementan a nivel de NSG en su lugar.
 
-### ¿Por qué AKS con `Standard_B2s`?
-Es el nodo más pequeño compatible con AKS en producción. Para reducir costos, el clúster debe detenerse cuando no se trabaja:
+### ¿Por qué AKS con `Standard_D2s_v3`?
+`Standard_B2s` (más barato) no está disponible en suscripciones Free Trial en `eastus2`. `Standard_D2s_v3` (2 vCPU, 8 GB, ~$70/mes) es el más económico permitido. El cluster usa SKU Free (control plane gratis). Para reducir costos, el clúster debe detenerse cuando no se trabaja:
 ```bash
 az aks stop --name aks-lz-dev --resource-group rg-spoke-app-lz-dev
 az aks start --name aks-lz-dev --resource-group rg-spoke-app-lz-dev
@@ -238,7 +238,7 @@ az aks start --name aks-lz-dev --resource-group rg-spoke-app-lz-dev
 - **Cero secretos en el repositorio**: los valores sensibles se marcan como `sensitive = true` en Terraform y se consumen desde Key Vault en runtime.
 - **OIDC para CI/CD**: los pipelines se autentican mediante Workload Identity Federation, sin credenciales de larga duración.
 - **Mínimo privilegio**: el Service Principal solo tiene `Contributor` en la suscripción y `Storage Blob Data Contributor` en el Storage Account del tfstate.
-- **Network isolation**: AKS y Key Vault son privados — no exponen endpoints públicos.
+- **Network isolation**: Key Vault tiene Private Endpoint (sin acceso público). AKS usa Azure CNI en subnet privada. ACR Basic sin Private Endpoint (requiere Premium) — protegido por NSG.
 
 ---
 

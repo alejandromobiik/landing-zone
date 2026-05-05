@@ -19,10 +19,9 @@
 #   - Comprensión: main.tf queda limpio y legible — ves la arquitectura
 #     completa de un vistazo sin perderte en detalles de implementación
 #
-# ESTADO ACTUAL (Paso 3 — Fase 3):
-#   Solo creamos los 4 Resource Groups. Los módulos de red, AKS, ACR,
-#   Key Vault, etc., se agregarán en los pasos siguientes de la Fase 3
-#   y en las Fases 4, 5, 6 y 7.
+# ESTADO ACTUAL (Fase 3 completa):
+#   4 Resource Groups + 6 módulos: network, monitoring, policy, keyvault, acr, aks.
+#   Todos los recursos aplicados en Azure y commiteados por rama.
 #
 # =============================================================================
 
@@ -184,7 +183,7 @@ module "network" {
   #   hub_vnet_cidr               = "10.0.0.0/16"
   #   hub_subnet_private_dns_cidr = "10.0.1.0/24"
   #   spoke_vnet_cidr             = "10.1.0.0/16"
-  #   spoke_subnet_aks_cidr       = "10.1.1.0/22"
+  #   spoke_subnet_aks_cidr       = "10.1.0.0/22"
   #   spoke_subnet_pe_cidr        = "10.1.10.0/24"
 
   depends_on = [
@@ -300,11 +299,11 @@ module "acr" {
 }
 
 # =============================================================================
-# MÓDULO AKS — Azure Kubernetes Service (SKU Free, 1 nodo Standard_B2s)
+# MÓDULO AKS — Azure Kubernetes Service (SKU Free, 1 nodo Standard_D2s_v3)
 #
 # Crea el cluster de Kubernetes con:
 #   - Control plane gratuito (SKU Free)
-#   - 1 nodo Standard_B2s (~$34/mes) — PARAR cuando no se trabaje
+#   - 1 nodo Standard_D2s_v3 (~$70/mes) — PARAR cuando no se trabaje
 #   - SystemAssigned identity + kubelet identity (auto-creada)
 #   - oms_agent: envía logs al Log Analytics Workspace (Container Insights)
 #   - Azure CNI: cada pod recibe IP real de la subnet-aks (10.1.0.0/22)
@@ -314,7 +313,7 @@ module "acr" {
 #   az aks stop --name aks-lz-dev --resource-group rg-spoke-app-lz-dev
 #   az aks start --name aks-lz-dev --resource-group rg-spoke-app-lz-dev
 #
-# COSTO: ~$0/mes control plane + ~$34/mes nodo B2s (~$1.14/día)
+# COSTO: ~$0/mes control plane + ~$70/mes nodo D2s_v3 (~$2.30/día)
 #         → Parar el cluster ahorra todo el costo del nodo
 # =============================================================================
 module "aks" {

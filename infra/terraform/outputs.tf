@@ -17,10 +17,8 @@
 #   del pipeline. Aun así el valor está en el tfstate — por eso el tfstate
 #   debe estar en un Storage Account privado (ya configurado en backend.tf).
 #
-# NOTA: Los outputs de infraestructura real (IDs de AKS, ACR, etc.) se
-#   agregarán en los pasos 4, 5 y 6 cuando se creen los módulos correspondientes.
-#   Este archivo solo define los outputs de los data sources del paso 1,
-#   que ya están disponibles sin necesidad de crear recursos nuevos.
+# NOTA: Los outputs de infraestructura (IDs de AKS, ACR, KV, LAW) están
+#   al final de este archivo, añadidos al completar los módulos de Fase 3.
 #
 # =============================================================================
 
