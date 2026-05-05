@@ -194,3 +194,32 @@ Rama: feat/fase3-monitoring-policy
   terraform apply "tfplan"
   # → Apply complete! Resources: 1 added, 0 changed, 0 destroyed.
   # Total rama: 6 recursos creados (law-lz-dev + 5 policy assignments)
+
+
+--------------------------------------------------------------------------------
+FASE 3 — Módulo keyvault: Key Vault + Private Endpoint + Módulo acr: ACR Basic
+Directorio: infra/terraform/
+Archivos: main.tf (módulos + unique_suffix local), modules/keyvault/, modules/acr/
+Rama: feat/fase3-keyvault-acr
+--------------------------------------------------------------------------------
+
+  git checkout -b feat/fase3-keyvault-acr
+
+  terraform fmt -recursive && terraform validate
+  # Fix: enable_rbac_authorization → rbac_authorization_enabled (azurerm v4)
+
+  terraform plan -out=tfplan
+  # → Plan: 3 to add, 0 to change, 0 to destroy.
+
+  # Primer apply: ACR creado OK. KV falló: VaultAlreadyExists (nombre global ocupado).
+  terraform apply "tfplan"
+
+  # Fix: añadir local.unique_suffix con últimos 5 chars del subscription ID (-66635)
+  # KV pasa de "kv-lz-dev" a "kv-lz-dev-66635"
+  # ACR pasa de "acrlzdev" a "acrlzdev66635"
+  terraform plan -out=tfplan
+  # → Plan: 3 to add, 0 to change, 1 to destroy.
+
+  terraform apply "tfplan"
+  # → Apply complete! Resources: 3 added, 0 changed, 1 destroyed.
+  # Recursos creados: kv-lz-dev-66635 + pe-kv-lz-dev-66635 + acrlzdev66635
