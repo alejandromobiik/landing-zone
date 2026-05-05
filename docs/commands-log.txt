@@ -157,3 +157,40 @@ Archivos: main.tf (módulo añadido), modules/network/main.tf, variables.tf, out
   git add infra/terraform/main.tf infra/terraform/modules/network/ docs/glosario.md
   git commit -m "feat(network): módulo hub-spoke con VNets, NSGs, peering y Private DNS Zones"
   git push origin feat/fase3-network
+
+
+--------------------------------------------------------------------------------
+FASE 3 — Módulo monitoring: Log Analytics Workspace + Módulo policy: Azure Policies
+Directorio: infra/terraform/
+Archivos: main.tf (módulos añadidos), modules/monitoring/, modules/policy/
+Rama: feat/fase3-monitoring-policy
+--------------------------------------------------------------------------------
+
+  # Sincronizar main y crear rama
+  cd "C:\Users\aleja\Documents\Proyectos\Path Infra\landing-zone"
+  git checkout main; git pull origin main
+  git checkout -b feat/fase3-monitoring-policy
+
+  # Inicializar para que detecte los nuevos módulos locales
+  cd infra/terraform
+  terraform init -upgrade
+
+  # Fix detectado en validate: azurerm v4 usa "enforce" no "enforcement_mode"
+  # Se corrigió con: Get-Content ... -replace 'enforcement_mode\s*=\s*false', 'enforce = false'
+  terraform fmt -recursive
+  terraform validate
+  # → Success! The configuration is valid.
+
+  # Primer plan: 6 to add (1 LAW + 5 policy assignments)
+  terraform plan -out=tfplan
+
+  # Primer apply: 5/6 exitosos. Error en allowed_locations: parámetro incorrecto
+  # "listOfAllowedValues" debe ser "listOfAllowedLocations" para la policy builtin e56962a6
+  terraform apply "tfplan"
+
+  # Corrección y re-plan/apply del recurso faltante
+  # → Plan: 1 to add, 0 to change, 0 to destroy.
+  terraform plan -out=tfplan
+  terraform apply "tfplan"
+  # → Apply complete! Resources: 1 added, 0 changed, 0 destroyed.
+  # Total rama: 6 recursos creados (law-lz-dev + 5 policy assignments)

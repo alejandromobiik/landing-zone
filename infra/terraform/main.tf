@@ -186,3 +186,50 @@ module "network" {
     azurerm_resource_group.spoke_app,
   ]
 }
+
+# =============================================================================
+# MÓDULO MONITORING — Log Analytics Workspace
+#
+# Crea el workspace central de logs que recibe telemetría de AKS, Key Vault
+# y los NSGs. Debe desplegarse ANTES que AKS, porque el clúster necesita
+# el workspace_resource_id para configurar el add-on de monitoreo (oms_agent).
+#
+# Se coloca en rg-platform porque es infraestructura de soporte, igual que
+# el Storage Account del tfstate. Comparten el mismo ciclo de vida: se crean
+# en el bootstrap y raramente se eliminan.
+#
+# COSTO: ~$0/mes (los primeros 5 GB de logs/mes son gratuitos en PerGB2018)
+# =============================================================================
+module "monitoring" {
+  source = "./modules/monitoring"
+
+  location            = var.location
+  name_suffix         = local.name_suffix
+  tags                = local.common_tags
+  resource_group_name = data.azurerm_resource_group.platform.name
+  retention_in_days   = 30
+}
+
+# =============================================================================
+# MÓDULO POLICY — Asignaciones de Azure Policy a nivel de suscripción
+#
+# Asigna 5 políticas builtin de Microsoft:
+#   1. Require tag "Environment" en todos los recursos
+#   2. Require tag "Project" en todos los recursos
+#   3. Require tag "Owner" en todos los recursos
+#   4. Solo ubicaciones permitidas (eastus2, eastus, brazilsouth)
+#   5. Storage Accounts sin acceso público a la red
+#
+# Todas las políticas están en modo DoNotEnforce (enforcement_mode = false):
+# reportan conformidad en el portal pero no bloquean operaciones.
+# Los recursos existentes son conformes: tienen los 3 tags y están en eastus2.
+#
+# COSTO: $0 — las asignaciones de Policy no tienen cargo.
+# =============================================================================
+module "policy" {
+  source = "./modules/policy"
+
+  subscription_id   = data.azurerm_subscription.current.id
+  allowed_locations = var.allowed_locations
+  tags              = local.common_tags
+}
