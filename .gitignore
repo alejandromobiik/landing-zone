@@ -1,0 +1,85 @@
+# =============================================================================
+# .gitignore — Archivos que Git NO debe rastrear en este repositorio
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Terraform
+# ---------------------------------------------------------------------------
+
+# .terraform/ contiene los binarios de los proveedores descargados por
+# "terraform init" (azurerm, azuread, random). Pueden pesar cientos de MB
+# y se regeneran con "terraform init" en cualquier máquina o pipeline.
+# NUNCA deben subirse a Git.
+.terraform/
+
+# .terraform.lock.hcl SÍ debe subirse a Git.
+# Es el archivo de "lock" que fija las versiones exactas de los proveedores
+# (similar a package-lock.json en Node.js). Garantiza que todos usan
+# exactamente el mismo proveedor, incluso si hay versiones nuevas disponibles.
+# Por eso NO está en esta lista — Git lo rastreará normalmente.
+
+# Archivos de plan de Terraform.
+# "terraform plan -out=tfplan" genera un archivo binario con el plan calculado.
+# Puede contener valores sensibles (IDs, IPs, etc.) — no debe estar en Git.
+*.tfplan
+tfplan
+
+# Archivos de estado local.
+# Si alguien corre Terraform sin el backend configurado, genera estos archivos
+# localmente. Con nuestro backend remoto en Azure, estos nunca deberían
+# aparecer, pero los ignoramos por seguridad.
+*.tfstate
+*.tfstate.backup
+terraform.tfstate
+terraform.tfstate.backup
+
+# Archivos de variables con valores sensibles.
+# Es una convención común llamar "*.tfvars" a archivos con valores de variables.
+# Si contienen secretos o IDs sensibles, no deben subirse a Git.
+# Excepción: terraform.tfvars.example (sin valores reales) SÍ puede subirse.
+*.tfvars
+!*.tfvars.example
+
+# Archivos temporales que genera el editor HashiCorp
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# ---------------------------------------------------------------------------
+# PowerShell
+# ---------------------------------------------------------------------------
+
+# Archivos de transcripción de PowerShell (logs de sesión)
+*.pslog
+
+# ---------------------------------------------------------------------------
+# Sistemas operativos
+# ---------------------------------------------------------------------------
+
+# Windows
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSFiles
+
+# ---------------------------------------------------------------------------
+# Editores
+# ---------------------------------------------------------------------------
+
+# VS Code (solo ignoramos configuraciones personales, no las del workspace)
+.vscode/settings.json
+.vscode/launch.json
+
+# JetBrains
+.idea/
+
+# Vim
+*.swp
+*.swo

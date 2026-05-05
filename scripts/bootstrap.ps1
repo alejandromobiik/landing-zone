@@ -11,7 +11,8 @@
       2. Crea las Federation Credentials OIDC en el Service Principal
          (permite que GitHub Actions se autentique ante Azure SIN contraseñas)
       3. Asigna el rol "Storage Blob Data Contributor" al Service Principal
-         sobre el Storage Account
+         Y al usuario actual sobre el Storage Account
+         (necesario para que "terraform plan" local pueda adquirir el state lock)
 
     El script es IDEMPOTENTE: puedes ejecutarlo múltiples veces sin error.
     Si un recurso ya existe, lo detecta, informa y continúa sin duplicarlo.
@@ -563,7 +564,7 @@ try {
     }
 
     # ------------------------------------------------------------------
-    # PASO 7: Asignar rol "Storage Blob Data Contributor" al Service Principal
+    # PASO 7: Asignar rol "Storage Blob Data Contributor"
     #
     # Aunque el Service Principal ya tiene el rol "Contributor" en la
     # suscripción (creado por sp-landing-zone-cicd.ps1), ese rol NO es
@@ -571,33 +572,46 @@ try {
     # En Azure, el acceso a los DATOS de un storage (los blobs) requiere
     # un rol específico del plano de datos: "Storage Blob Data Contributor".
     #
-    # Este rol se asigna solo sobre el Storage Account del tfstate
-    # (no sobre toda la suscripción) para respetar el principio de
-    # mínimo privilegio: el SP solo accede al storage que necesita.
+    # Se asigna a DOS identidades:
+    #   a) El Service Principal (para GitHub Actions)
+    #   b) El usuario que ejecuta este script (para terraform plan/apply local)
+    #      IMPORTANTE: incluso siendo Owner de la suscripción, sin este rol
+    #      del plano de datos, "terraform plan" se cuelga adquiriendo el
+    #      state lock, porque Owner solo cubre el plano de gestión.
+    #
+    # Scope: solo sobre el Storage Account del tfstate (mínimo privilegio).
     # ------------------------------------------------------------------
-    Write-Host "[7/7] Asignando rol 'Storage Blob Data Contributor' al Service Principal..." -ForegroundColor Yellow
+    Write-Host "[7/7] Asignando rol 'Storage Blob Data Contributor'..." -ForegroundColor Yellow
 
     $sp = Get-AzADServicePrincipal -ApplicationId $ServicePrincipalAppId -ErrorAction SilentlyContinue
     if (-not $sp) {
         throw "No se encontró el Service Principal con AppId '$ServicePrincipalAppId'."
     }
 
-    $roleName    = "Storage Blob Data Contributor"
+    # Obtener el Object ID del usuario que ejecuta este script
+    $currentUserJson = az ad signed-in-user show --output json 2>$null
+    $currentUserId   = if ($currentUserJson) { ($currentUserJson | ConvertFrom-Json).id } else { $null }
+
+    $roleName     = "Storage Blob Data Contributor"
     $storageScope = "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroupName/providers/Microsoft.Storage/storageAccounts/$StorageAccountName"
 
     if ($WhatIf) {
         Write-Host "[WHATIF] Se asignaría: rol '$roleName' al SP '$ServicePrincipalAppId'" -ForegroundColor Magenta
+        if ($currentUserId) {
+            Write-Host "[WHATIF] Se asignaría: rol '$roleName' al usuario actual ($currentUserId)" -ForegroundColor Magenta
+        }
         Write-Host "         Scope: $storageScope" -ForegroundColor Magenta
     }
     else {
-        $existingRole = Get-AzRoleAssignment `
+        # --- 7a: Asignar al Service Principal ---
+        $existingSpRole = Get-AzRoleAssignment `
             -ObjectId           $sp.Id `
             -RoleDefinitionName $roleName `
             -Scope              $storageScope `
             -ErrorAction        SilentlyContinue
 
-        if ($existingRole) {
-            Write-Host "[AVISO] El rol '$roleName' ya estaba asignado. No se duplica." -ForegroundColor Magenta
+        if ($existingSpRole) {
+            Write-Host "[AVISO] Rol '$roleName' ya asignado al SP. No se duplica." -ForegroundColor Magenta
         }
         else {
             New-AzRoleAssignment `
@@ -605,7 +619,32 @@ try {
                 -RoleDefinitionName $roleName `
                 -Scope              $storageScope | Out-Null
 
-            Write-Host "[INFO] Rol '$roleName' asignado correctamente." -ForegroundColor Cyan
+            Write-Host "[INFO] Rol '$roleName' asignado al SP." -ForegroundColor Cyan
+        }
+
+        # --- 7b: Asignar al usuario actual (necesario para terraform plan local) ---
+        if ($currentUserId) {
+            $existingUserRole = Get-AzRoleAssignment `
+                -ObjectId           $currentUserId `
+                -RoleDefinitionName $roleName `
+                -Scope              $storageScope `
+                -ErrorAction        SilentlyContinue
+
+            if ($existingUserRole) {
+                Write-Host "[AVISO] Rol '$roleName' ya asignado al usuario actual. No se duplica." -ForegroundColor Magenta
+            }
+            else {
+                New-AzRoleAssignment `
+                    -ObjectId              $currentUserId `
+                    -RoleDefinitionName    $roleName `
+                    -Scope                 $storageScope `
+                    -PrincipalType         "User" | Out-Null
+
+                Write-Host "[INFO] Rol '$roleName' asignado al usuario actual ($currentUserId)." -ForegroundColor Cyan
+            }
+        }
+        else {
+            Write-Host "[AVISO] No se pudo obtener el Object ID del usuario actual. Omitiendo asignación de usuario." -ForegroundColor Yellow
         }
     }
 
@@ -631,7 +670,7 @@ try {
         Write-Host "   Storage Account:      $StorageAccountName"
         Write-Host "   Contenedor blob:      $ContainerName"
         Write-Host "   Fed. Credentials:     github-main, github-env-prod, github-pr"
-        Write-Host "   Rol RBAC (storage):   $roleName"
+        Write-Host "   Rol RBAC (storage):   $roleName (SP + usuario actual)"
         Write-Host ""
         Write-Host " SIGUIENTE PASO — Fase 3: crear los archivos Terraform." -ForegroundColor Yellow
         Write-Host " El archivo backend.tf debe apuntar a:" -ForegroundColor Yellow

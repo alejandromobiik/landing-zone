@@ -1,0 +1,119 @@
+================================================================================
+REGISTRO DE COMANDOS — Landing Zone
+Orden de ejecución durante la sesión de trabajo
+================================================================================
+
+--------------------------------------------------------------------------------
+FASE 0 — Preparación del Service Principal
+Archivo: scripts/sp-landing-zone-cicd.ps1
+--------------------------------------------------------------------------------
+
+  # Crear el Service Principal en Azure Entra ID
+  pwsh -File scripts\sp-landing-zone-cicd.ps1
+
+
+--------------------------------------------------------------------------------
+FASE 2 — Bootstrap de Azure para Terraform
+Archivo: scripts/bootstrap.ps1
+--------------------------------------------------------------------------------
+
+  # Modo simulación (no crea nada, solo muestra qué haría)
+  pwsh -File scripts\bootstrap.ps1 -WhatIf
+
+  # Ejecución real — crea todos los recursos
+  pwsh -File scripts\bootstrap.ps1
+
+  # Segunda ejecución — verifica idempotencia (todo debe mostrar [AVISO])
+  pwsh -File scripts\bootstrap.ps1
+
+
+--------------------------------------------------------------------------------
+FASE 2 — Control de versiones (Git)
+Directorio: landing-zone/
+--------------------------------------------------------------------------------
+
+  # Agregar el script de bootstrap al área de staging
+  git add .
+
+  # Registrar el cambio en el historial local
+  git commit -m "Bootstrap completo con idempotencia"
+
+  # Intento de push directo a main (bloqueado por el ruleset de la Fase 1)
+  git push origin main
+
+  # Crear rama feature para abrir un Pull Request
+  git checkout -b feat/bootstrap
+
+  # Subir la rama feature a GitHub
+  git push origin feat/bootstrap
+
+  # (El PR se aprobó y mergeó desde la interfaz web de GitHub)
+
+
+--------------------------------------------------------------------------------
+FASE 3 — Paso 1: Inicializar Terraform
+Directorio: infra/terraform/
+Archivos: backend.tf, providers.tf
+--------------------------------------------------------------------------------
+
+  # Descargar proveedores declarados en providers.tf
+  # y conectar el backend al Storage Account de Azure
+  terraform init
+
+  # Verificar que el formato de los archivos .tf es correcto
+  # (-check no modifica archivos, solo reporta si hay diferencias)
+  terraform fmt -check -recursive
+
+  # Verificar que la sintaxis del código HCL es válida
+  # (no se conecta a Azure, solo analiza el código)
+  terraform validate
+
+
+--------------------------------------------------------------------------------
+FASE 3 — Paso 2: Variables y Outputs globales
+Directorio: infra/terraform/
+Archivos: variables.tf, outputs.tf
+--------------------------------------------------------------------------------
+
+  # Aplicar formato automático al código HCL (corrige alineación y espacios)
+  # (sin -check: modifica los archivos en lugar de solo reportar diferencias)
+  terraform fmt -recursive
+
+  # Verificar que la sintaxis del código HCL es válida
+  terraform validate
+
+
+--------------------------------------------------------------------------------
+FASE 3 — Paso 3: Root module (main.tf) y Resource Groups
+Directorio: infra/terraform/
+Archivos: main.tf
+--------------------------------------------------------------------------------
+
+  # PREREQUISITO (una sola vez): Asignar Storage Blob Data Contributor al usuario
+  # actual sobre el Storage Account del tfstate. Sin esto, "terraform plan" cuelga
+  # al adquirir el state lock (el rol Owner en la suscripción no da acceso al
+  # plano de datos del Storage Account — son planos separados en Azure).
+  $me = (az ad signed-in-user show --query id --output tsv)
+  az role assignment create `
+    --assignee-object-id $me `
+    --assignee-principal-type User `
+    --role "Storage Blob Data Contributor" `
+    --scope "/subscriptions/1989a8c1-76c1-4555-a228-c95f86c66635/resourceGroups/rg-platform/providers/Microsoft.Storage/storageAccounts/stlztf86c66635"
+
+  # Aplicar formato automático
+  terraform fmt -recursive
+
+  # Verificar sintaxis
+  terraform validate
+
+  # Generar el plan de ejecución y guardarlo en un archivo binario
+  # -out=tfplan: guarda el plan para aplicarlo exactamente igual después
+  # Resultado: 3 to add, 0 to change, 0 to destroy
+  #   + rg-network-hub-lz-dev
+  #   + rg-spoke-app-lz-dev
+  #   + rg-shared-lz-dev
+  terraform plan -out=tfplan
+
+  # Aplicar exactamente el plan guardado (no vuelve a calcular ni pide confirmación)
+  # Resultado: Apply complete! Resources: 3 added, 0 changed, 0 destroyed.
+  terraform apply "tfplan"
