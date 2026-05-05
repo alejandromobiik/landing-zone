@@ -145,3 +145,44 @@ resource "azurerm_resource_group" "shared" {
   location = var.location
   tags     = local.common_tags
 }
+
+# =============================================================================
+# MÓDULO NETWORK — Red hub-spoke completa
+#
+# Este módulo crea toda la infraestructura de red:
+#   - VNet hub (10.0.0.0/16) con subnet de DNS privado y NSG
+#   - VNet spoke (10.1.0.0/16) con subnets para AKS y Private Endpoints y NSG
+#   - VNet Peering bidireccional hub ↔ spoke
+#   - 3 Private DNS Zones: azurecr.io, vaultcore.azure.net, azmk8s.io
+#   - DNS Zone Links del hub hacia el spoke
+#
+# Los outputs de este módulo (subnet IDs, DNS zone IDs) se usarán como
+# inputs para los módulos de AKS, ACR y Key Vault.
+#
+# depends_on garantiza que los Resource Groups existan antes de crear
+# cualquier recurso de red dentro de ellos.
+# =============================================================================
+module "network" {
+  source = "./modules/network"
+
+  # Ubicación y nombres
+  location    = var.location
+  name_suffix = local.name_suffix
+  tags        = local.common_tags
+
+  # Resource Groups donde vivirán los recursos de red
+  hub_resource_group_name   = azurerm_resource_group.network_hub.name
+  spoke_resource_group_name = azurerm_resource_group.spoke_app.name
+
+  # Espacios de direcciones IP — usando los valores por defecto del módulo:
+  #   hub_vnet_cidr               = "10.0.0.0/16"
+  #   hub_subnet_private_dns_cidr = "10.0.1.0/24"
+  #   spoke_vnet_cidr             = "10.1.0.0/16"
+  #   spoke_subnet_aks_cidr       = "10.1.1.0/22"
+  #   spoke_subnet_pe_cidr        = "10.1.10.0/24"
+
+  depends_on = [
+    azurerm_resource_group.network_hub,
+    azurerm_resource_group.spoke_app,
+  ]
+}

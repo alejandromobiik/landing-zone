@@ -117,3 +117,43 @@ Archivos: main.tf
   # Aplicar exactamente el plan guardado (no vuelve a calcular ni pide confirmación)
   # Resultado: Apply complete! Resources: 3 added, 0 changed, 0 destroyed.
   terraform apply "tfplan"
+
+
+--------------------------------------------------------------------------------
+FASE 3 — Módulo network: hub-spoke (VNets, NSGs, peering, Private DNS Zones)
+Directorio: infra/terraform/
+Archivos: main.tf (módulo añadido), modules/network/main.tf, variables.tf, outputs.tf
+--------------------------------------------------------------------------------
+
+  # Inicializar Terraform para que detecte el nuevo módulo local
+  terraform init -upgrade
+
+  # Aplicar formato a todos los archivos recursivamente
+  terraform fmt -recursive
+
+  # Verificar sintaxis y referencias entre módulos
+  terraform validate
+
+  # Generar plan — Resultado: Plan: 18 to add, 0 to change, 0 to destroy.
+  #   VNets hub y spoke, subnets, NSGs, peering bidireccional,
+  #   3 Private DNS Zones (ACR, Key Vault, AKS) + 3 DNS Zone Links
+  terraform plan -out=tfplan
+
+  # Primer intento de apply falló: CIDR 10.1.1.0/22 no está alineado a frontera /22.
+  # Azure requiere 10.1.0.0/22 (múltiplo de 4 en el tercer octeto para /22).
+  # Corrección: modules/network/variables.tf → spoke_subnet_aks_cidr default = "10.1.0.0/22"
+  # Resultado primer apply: 16 recursos creados, 2 fallaron (subnet-aks + NSG association)
+  terraform apply "tfplan"
+
+  # Nuevo plan tras corregir CIDR — Resultado: Plan: 2 to add, 0 to change, 0 to destroy.
+  terraform plan -out=tfplan
+
+  # Apply final — Resultado: Apply complete! Resources: 2 added, 0 changed, 0 destroyed.
+  # Total acumulado del módulo network: 18 recursos en Azure.
+  terraform apply "tfplan"
+
+  # Commit con todos los archivos del módulo network y glosario
+  cd "C:\Users\aleja\Documents\Proyectos\Path Infra\landing-zone"
+  git add infra/terraform/main.tf infra/terraform/modules/network/ docs/glosario.md
+  git commit -m "feat(network): módulo hub-spoke con VNets, NSGs, peering y Private DNS Zones"
+  git push origin feat/fase3-network
