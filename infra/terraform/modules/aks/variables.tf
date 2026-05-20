@@ -101,12 +101,41 @@ variable "node_vm_size" {
 }
 
 variable "node_count" {
-  description = "Número de nodos en el default node pool. Mínimo 1. Cada nodo es una VM con costo por hora. Mantener en 1 para dev."
+  description = "Número de nodos en el default node pool (system). Mínimo 1. Cada nodo es una VM con costo por hora. Mantener en 1 para dev."
   type        = number
   default     = 1
 
   validation {
     condition     = var.node_count >= 1 && var.node_count <= 5
     error_message = "node_count debe estar entre 1 y 5 para entornos de desarrollo."
+  }
+}
+
+# -----------------------------------------------------------------------------
+# Configuración del USER node pool
+#
+# El PDF de la evaluación exige "AKS privado con node pool de sistema y de usuario".
+# El system pool (default_node_pool) corre los componentes internos de Kubernetes
+# (CoreDNS, metrics-server, etc.). El user pool corre TUS aplicaciones.
+# Separarlos evita que tu app le robe CPU/RAM al sistema y lo deje inestable.
+#
+# Costo: 1 nodo extra Standard_D2s_v3 ≈ $70/mes adicional. Total con system: ~$140/mes.
+# RECUERDA: parar el cluster con `az aks stop` cuando no trabajes para ahorrar.
+# -----------------------------------------------------------------------------
+
+variable "user_node_vm_size" {
+  description = "Tamaño de VM para los nodos del user node pool. Por defecto el mismo que el system pool. En suscripciones Free Trial usar Standard_D2s_v3."
+  type        = string
+  default     = "Standard_D2s_v3"
+}
+
+variable "user_node_count" {
+  description = "Número de nodos en el user node pool. Mínimo 1. Mantener en 1 para dev."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.user_node_count >= 1 && var.user_node_count <= 5
+    error_message = "user_node_count debe estar entre 1 y 5 para entornos de desarrollo."
   }
 }

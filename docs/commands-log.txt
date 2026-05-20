@@ -270,3 +270,156 @@ Rama: feat/fase3-aks
   git add infra/terraform/main.tf infra/terraform/outputs.tf infra/terraform/modules/aks/ docs/commands-log.txt
   git commit -m "feat(aks): cluster AKS Free tier + AcrPull para kubelet identity"
   git push origin feat/fase3-aks
+
+
+--------------------------------------------------------------------------------
+FASE 5/6 — Seguridad y observabilidad (actualización posterior)
+Directorio: infra/terraform/
+Archivos: main.tf, modules/monitoring/main.tf, modules/aks/main.tf, modules/network/main.tf, outputs.tf
+--------------------------------------------------------------------------------
+
+  # Formato y validación tras cambios (Defender, diagnostics, MI federada, alertas)
+  terraform fmt -recursive
+  terraform validate
+
+  # Plan general
+  terraform plan -no-color -input=false
+
+  # Primer apply falló por AKS detenido (OperationNotAllowed)
+  terraform apply -auto-approve -input=false -no-color
+
+  # Encender AKS para permitir operaciones del provider sobre el cluster
+  az aks start --name aks-lz-dev --resource-group rg-spoke-app-lz-dev --no-wait
+  az aks show --name aks-lz-dev --resource-group rg-spoke-app-lz-dev --query "{power:powerState.code, prov:provisioningState}" -o json
+
+  # Ajustes realizados por errores de apply:
+  # - azurerm_federated_identity_credential: parent_id -> user_assigned_identity_id
+  # - Defender: subplan explícito en VirtualMachines(P2) y KeyVaults(PerKeyVault)
+  # - AKS pools: upgrade_settings para eliminar drift
+
+  # Reintento apply
+  terraform apply -auto-approve -input=false -no-color
+
+  # Verificación final: sin cambios pendientes
+  terraform plan -no-color -input=false
+  # -> No changes. Your infrastructure matches the configuration.
+
+
+--------------------------------------------------------------------------------
+FASE 5.4.2 — Revisión de recomendaciones de Defender
+--------------------------------------------------------------------------------
+
+  # Listar recomendaciones Unhealthy
+  az security assessment list --query "[?status.code=='Unhealthy'].{recommendation:displayName, resource:resourceDetails.ResourceName, resourceType:resourceDetails.ResourceType}" -o table
+
+  # Verificar planes Defender activos por API de Microsoft.Security
+  az rest --method get --uri "https://management.azure.com/subscriptions/1989a8c1-76c1-4555-a228-c95f86c66635/providers/Microsoft.Security/pricings?api-version=2024-01-01" --query "value[].{name:name, pricingTier:properties.pricingTier, subPlan:properties.subPlan}" -o table
+
+
+--------------------------------------------------------------------------------
+FASE 6.3.3 — Prueba de alerta KQL (pods Failed)
+--------------------------------------------------------------------------------
+
+  # Crear pod de prueba que falla deliberadamente
+  az aks command invoke --resource-group rg-spoke-app-lz-dev --name aks-lz-dev --command "kubectl run lz-failed-test --image=busybox --restart=Never -- /bin/sh -c 'exit 1'"
+  az aks command invoke --resource-group rg-spoke-app-lz-dev --name aks-lz-dev --command "kubectl get pod lz-failed-test -o jsonpath='{.status.phase}'"
+
+  # Segundo pod para cubrir múltiples ventanas de evaluación
+  az aks command invoke --resource-group rg-spoke-app-lz-dev --name aks-lz-dev --command "kubectl run lz-failed-test2 --image=busybox --restart=Never -- /bin/sh -c 'exit 1'"
+  az aks command invoke --resource-group rg-spoke-app-lz-dev --name aks-lz-dev --command "kubectl get pod lz-failed-test2 -o jsonpath='{.status.phase}'"
+
+  # Evidencia en Log Analytics
+  az monitor log-analytics workspace show --resource-group rg-platform --workspace-name law-lz-dev --query customerId -o tsv
+  az monitor log-analytics query --workspace <customerId-law-lz-dev> --analytics-query "KubePodInventory | where TimeGenerated > ago(15m) | where Name == 'lz-failed-test2' | summarize failed_count=count() by PodStatus" -o table
+
+  # Limpieza de pods de prueba
+  az aks command invoke --resource-group rg-spoke-app-lz-dev --name aks-lz-dev --command "kubectl delete pod lz-failed-test --ignore-not-found"
+  az aks command invoke --resource-group rg-spoke-app-lz-dev --name aks-lz-dev --command "kubectl delete pod lz-failed-test2 --ignore-not-found"
+
+
+--------------------------------------------------------------------------------
+KEY VAULT — RBAC data-plane + acceso temporal en laboratorio
+--------------------------------------------------------------------------------
+
+  # Asignar rol completo de data-plane para KV al usuario actual
+  $uid = az ad signed-in-user show --query id -o tsv
+  az role assignment create --assignee-object-id $uid --assignee-principal-type User --role "Key Vault Administrator" --scope "/subscriptions/1989a8c1-76c1-4555-a228-c95f86c66635/resourceGroups/rg-spoke-app-lz-dev/providers/Microsoft.KeyVault/vaults/kv-lz-dev-66635"
+
+  # Ver roles sobre el vault para el usuario actual
+  az role assignment list --assignee-object-id $uid --scope "/subscriptions/1989a8c1-76c1-4555-a228-c95f86c66635/resourceGroups/rg-spoke-app-lz-dev/providers/Microsoft.KeyVault/vaults/kv-lz-dev-66635" --query "[].{role:roleDefinitionName,scope:scope}" -o table
+
+  # Sin VPN/red privada: abrir temporalmente red pública, crear secreto y cerrar
+  az keyvault update --name kv-lz-dev-66635 --public-network-access Enabled
+  az keyvault secret set --vault-name kv-lz-dev-66635 --name "app-message" --value "Hola desde Key Vault"
+  az keyvault secret show --vault-name kv-lz-dev-66635 --name "app-message"
+  az keyvault update --name kv-lz-dev-66635 --public-network-access Disabled
+  az keyvault show --name kv-lz-dev-66635 --query "{name:name, publicNetworkAccess:properties.publicNetworkAccess}" -o table
+
+
+--------------------------------------------------------------------------------
+FASE 8 — Aplicación Flask en AKS (build, push, apply)
+Directorio: landing-zone/app/
+--------------------------------------------------------------------------------
+
+  # Pre-checks (Azure CLI debe resolver SSL/proxy correctamente)
+  az acr show --name acrlzdev66635 --query "{sku:sku.name,adminEnabled:adminUserEnabled}" -o table
+  az aks check-acr --name aks-lz-dev --resource-group rg-spoke-app-lz-dev --acr acrlzdev66635
+  az aks show --name aks-lz-dev --resource-group rg-spoke-app-lz-dev --query powerState.code -o tsv
+
+  # Client ID de la MI del workload (alternativa al placeholder del ServiceAccount)
+  cd infra/terraform
+  terraform output -raw workload_app_identity_client_id
+
+  # Despliegue completo (Docker Desktop en ejecución)
+  cd ../../app
+  pwsh -File scripts/deploy-phase8.ps1
+
+  # Solo generar manifiesto combinado con client-id conocido (sin docker)
+  pwsh -File scripts/deploy-phase8.ps1 -WorkloadClientId "<guid-de-terraform-output>" -SkipPush
+
+  # Build local rápido (opcional)
+  docker build -t lz-app:local .
+  docker run --rm -p 8080:8080 lz-app:local
+
+  # Apply manual equivalente al script (cluster privado + archivo adjunto)
+  az aks command invoke `
+    --resource-group rg-spoke-app-lz-dev `
+    --name aks-lz-dev `
+    --command "kubectl apply -f all.yaml" `
+    --file .generated/all.yaml
+
+  az aks command invoke --resource-group rg-spoke-app-lz-dev --name aks-lz-dev --command "kubectl rollout status deployment/lz-app --timeout=120s"
+  az aks command invoke --resource-group rg-spoke-app-lz-dev --name aks-lz-dev --command "kubectl get pods -l app=lz-app -o wide"
+  az aks command invoke --resource-group rg-spoke-app-lz-dev --name aks-lz-dev --command "kubectl logs deployment/lz-app --tail=80"
+
+
+--------------------------------------------------------------------------------
+Runbook — Ahorro de costos (AKS apagado / encendido)
+Archivos: scripts/cost-down-off.ps1, scripts/cost-down-on.ps1
+Documentación: docs/runbook-cost-shutdown.md
+--------------------------------------------------------------------------------
+
+  # Simulación (no ejecuta cambios en Azure)
+  cd landing-zone
+  pwsh -File scripts\cost-down-off.ps1 -WhatIf
+  pwsh -File scripts\cost-down-on.ps1 -WhatIf
+
+  # Laboratorio: abrir Key Vault (público) al inicio; el script no lo vuelve a cerrar
+  pwsh -File scripts\cost-down-off.ps1 -OpenKeyVaultPublicFirst
+
+  # Apagar: limpieza K8s Fase 8 + parar AKS (sin purgar ACR)
+  pwsh -File scripts\cost-down-off.ps1
+
+  # Apagar incluyendo borrado de repos ACR (irreversible; requiere confirmación explícita)
+  pwsh -File scripts\cost-down-off.ps1 -ConfirmAcrPurge
+
+  # Solo parar AKS (sin kubectl ni ACR)
+  pwsh -File scripts\cost-down-off.ps1 -SkipK8sCleanup -SkipAcrPurge
+
+  # Encender AKS y esperar Running + nodos Ready (opcional: mismo flag Key Vault)
+  pwsh -File scripts\cost-down-on.ps1 -OpenKeyVaultPublicFirst
+  pwsh -File scripts\cost-down-on.ps1
+
+  # Tras purgar ACR: volver a desplegar la app (Fase 8)
+  cd app
+  pwsh -File scripts\deploy-phase8.ps1

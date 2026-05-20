@@ -62,3 +62,22 @@ variable "retention_in_days" {
     error_message = "La retención debe estar entre 30 y 730 días."
   }
 }
+
+# -----------------------------------------------------------------------------
+# Diagnostic Settings — recursos evaluados por el PDF (no incluyen AKS aquí)
+# -----------------------------------------------------------------------------
+
+variable "keyvault_id" {
+  description = "ARM Resource ID del Key Vault. Destino de Diagnostic Settings (audit logs)."
+  type        = string
+}
+
+variable "nsg_hub_id" {
+  description = "ARM Resource ID del NSG del hub. Para logs de flujo y contadores de reglas."
+  type        = string
+}
+
+variable "nsg_spoke_id" {
+  description = "ARM Resource ID del NSG del spoke."
+  type        = string
+}

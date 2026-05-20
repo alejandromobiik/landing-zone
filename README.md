@@ -43,7 +43,7 @@ graph TB
 
         subgraph RG_SPOKE["rg-spoke-app-lz-dev"]
             VNET_SPOKE[VNet Spoke\n10.1.0.0/16]
-            AKS[AKS Free tier\naks-lz-dev]
+            AKS[AKS PRIVADO\naks-lz-dev\nsystem + user pool\nOIDC + Workload Identity]
             ACR[ACR Basic\nacrlzdev66635]
             KV[Key Vault\nkv-lz-dev-66635]
             NSG_SPOKE[NSG Spoke]
@@ -133,19 +133,20 @@ landing-zone/
 | **Fase 0** | Herramientas instaladas (VS Code, Git, Azure CLI, Terraform, pwsh, kubectl, Docker) | — |
 | **Fase 1** | Repositorio GitHub con branch protection en `main` (PR obligatorio + 1 approval) | — |
 | **Fase 2** | Script `bootstrap.ps1` idempotente con `-WhatIf`, Federation Credentials OIDC, RBAC | `rg-platform`, Storage Account `stlztf86c66635`, contenedor `tfstate` |
-| **Fase 3** | Backend remoto, providers, variables, outputs, `main.tf` con 4 Resource Groups + 6 módulos (network, monitoring, policy, keyvault, acr, aks) | `rg-network-hub-lz-dev`, `rg-spoke-app-lz-dev`, `rg-shared-lz-dev`, 18 recursos de red, `law-lz-dev`, 5 policy assignments, `kv-lz-dev-66635` + PE, `acrlzdev66635`, `aks-lz-dev` + AcrPull |
+| **Fase 3** | Backend remoto, providers, variables, outputs, `main.tf` con 4 Resource Groups + 6 módulos (network, monitoring, policy, keyvault, acr, aks). El módulo AKS cumple el PDF: privado, OIDC, Workload Identity, system + user node pool. | `rg-network-hub-lz-dev`, `rg-spoke-app-lz-dev`, `rg-shared-lz-dev`, red hub-spoke, `law-lz-dev`, 5 policies, `kv-lz-dev-66635` + PE, `acrlzdev66635`, `aks-lz-dev` |
+| **Fase 4** | Hub-spoke, DNS privado y NSGs (implementados en el módulo `network` de la Fase 3). **Bastion omitido** — el PDF lo marca opcional (§3.3); costo $0 y acceso al cluster vía `az aks command invoke`. | Igual que recursos de red anteriores; checklist cerrado en el plan |
+| **Fase 5** | Defender for Cloud (VMs, Containers, Key Vault); Managed Identity del workload + federación OIDC + `Key Vault Secrets User`; secreto en KV documentado abajo (paso manual con RBAC). | Planes Defender; `mi-applzdev`; federation credential `fc-applzdev`; RBAC KV para la app |
+| **Fase 6** | Diagnostic Settings (AKS, KV, NSGs → LAW); alerta métrica CPU API server AKS > 80 % (métricas de nodo PREVIEW no admitidas en alerta métrica clásica) y regla KQL pods `Failed`; prueba de disparo pendiente. | `diag-aks`, `diag-kv`, `diag-nsg-*`; `alert-aks-cpu`, `alert-pods-failed`; Action Group `ag-lz` |
 
 ### ⏳ Pendiente
 
 | Fase | Descripción |
 |------|-------------|
-| **Fase 4** | Diagnostic Settings en AKS, Key Vault y NSGs → Log Analytics |
-| **Fase 5** | Secreto de prueba en Key Vault, Key Vault Secrets User para AKS, Defender for Cloud |
-| **Fase 6** | Alertas de métricas (CPU AKS > 80%), alerta KQL (pods Failed), pruebas de alertas |
-| **Fase 7** | Obtener credenciales AKS, verificar `kubectl get nodes`, validar AcrPull |
-| **Fase 8** | Aplicación Flask contenerizada desplegada en AKS |
+| **Manual post-apply** | Tras `terraform apply`: asignarte rol **Key Vault Secrets Officer** sobre el vault y ejecutar `az keyvault secret set` para `app-message`. Opcional: probar disparo de alertas (pod de estrés / pod fallido). |
+| **Fase 7** | Verificaciones `az acr show`, `az aks check-acr`, `az aks command invoke` (nodos Ready). |
+| **Fase 8** | App Flask en `app/` + Dockerfile multi-stage + manifiestos K8s + script `app/scripts/deploy-phase8.ps1` (ejecutar con Docker/Azure CLI operativos) |
 | **Fase 9** | Pipelines GitHub Actions con OIDC (plan en PR, apply en merge, build+deploy) |
-| **Fase 10** | Documentación final, bitácora de Copilot, diagrama de arquitectura |
+| **Fase 10** | Documentación final, bitácora de Copilot, diagrama en `/docs` |
 
 ---
 
@@ -224,12 +225,30 @@ Un Client Secret es una contraseña que puede filtrarse si alguien accede al rep
 ### ¿Por qué ACR Basic en lugar de Premium?
 El proyecto usa una suscripción de Free Trial con presupuesto limitado. ACR Basic cuesta ~$0.17/día vs ~$1.67/día de Premium. Los Private Endpoints de ACR (que requieren Premium) se implementan a nivel de NSG en su lugar.
 
-### ¿Por qué AKS con `Standard_D2s_v3`?
-`Standard_B2s` (más barato) no está disponible en suscripciones Free Trial en `eastus2`. `Standard_D2s_v3` (2 vCPU, 8 GB, ~$70/mes) es el más económico permitido. El cluster usa SKU Free (control plane gratis). Para reducir costos, el clúster debe detenerse cuando no se trabaja:
+### ¿Por qué AKS con `Standard_D2s_v3` y dos node pools?
+El PDF de la evaluación exige *"AKS privado con node pool de sistema y de usuario"* (sección 3.3). El cluster por tanto tiene **dos** node pools:
+
+- **system** (1 nodo `Standard_D2s_v3`): corre los componentes internos de Kubernetes (CoreDNS, metrics-server, etc.).
+- **user** (1 nodo `Standard_D2s_v3`): corre tus aplicaciones (Fase 8 del plan).
+
+`Standard_B2s` (más barato) no está disponible en suscripciones Free Trial en `eastus2`. `Standard_D2s_v3` (2 vCPU, 8 GB, ~$70/mes por nodo) es el más económico permitido por la suscripción. El cluster usa SKU Free (control plane gratis).
+
+**Costo total con cluster encendido 24/7: ~$140/mes (2 nodos × ~$70/mes).** Con el crédito Free Trial de 200 USD por 30 días, el cluster encendido 24/7 lo consume en ~43 días. Por eso es **indispensable** parar el cluster cuando no trabajes:
+
 ```bash
-az aks stop --name aks-lz-dev --resource-group rg-spoke-app-lz-dev
+az aks stop  --name aks-lz-dev --resource-group rg-spoke-app-lz-dev
 az aks start --name aks-lz-dev --resource-group rg-spoke-app-lz-dev
 ```
+
+### ¿Cómo se accede a un AKS privado?
+Como el API server NO es accesible desde internet, `kubectl` desde tu máquina o desde GitHub Actions no funciona directamente. Hay tres opciones, en orden de simplicidad:
+
+1. **`az aks command invoke`** (recomendado, sin costo extra): tunneliza comandos `kubectl` por Azure ARM, sin necesidad de estar en la VNet. Ejemplo:
+   ```bash
+   az aks command invoke --resource-group rg-spoke-app-lz-dev --name aks-lz-dev --command "kubectl get nodes"
+   ```
+2. **Self-hosted GitHub Actions runner** desplegado dentro de la VNet spoke (Fase 9 del plan).
+3. **Jumpbox** (VM `Standard_B1s` ~$8/mes) o **Azure Bastion** (~$140/mes) en el hub.
 
 ---
 
@@ -237,8 +256,10 @@ az aks start --name aks-lz-dev --resource-group rg-spoke-app-lz-dev
 
 - **Cero secretos en el repositorio**: los valores sensibles se marcan como `sensitive = true` en Terraform y se consumen desde Key Vault en runtime.
 - **OIDC para CI/CD**: los pipelines se autentican mediante Workload Identity Federation, sin credenciales de larga duración.
+- **AKS privado**: el API server del cluster no es accesible desde internet. El acceso se hace por `az aks command invoke` o desde dentro de la red.
+- **OIDC + Workload Identity en AKS**: los pods se autentican ante Azure (Key Vault, etc.) usando tokens temporales emitidos por el cluster, sin almacenar credenciales en el contenedor.
 - **Mínimo privilegio**: el Service Principal solo tiene `Contributor` en la suscripción y `Storage Blob Data Contributor` en el Storage Account del tfstate.
-- **Network isolation**: Key Vault tiene Private Endpoint (sin acceso público). AKS usa Azure CNI en subnet privada. ACR Basic sin Private Endpoint (requiere Premium) — protegido por NSG.
+- **Network isolation**: Key Vault tiene Private Endpoint (sin acceso público). AKS usa Azure CNI en subnet privada. ACR Basic protegido por managed identity (`admin_enabled = false`) — el PDF no exige Private Endpoint para ACR, solo "integrado por managed identity".
 
 ---
 

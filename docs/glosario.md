@@ -130,6 +130,13 @@ Un script o proceso que produce el mismo resultado sin importar cuántas veces s
 ### Key Vault
 La "caja fuerte" de Azure para secretos, contraseñas, certificados y claves de encriptación. En lugar de guardar una contraseña en el código o en una variable de entorno, la guardas en Key Vault y la aplicación la lee en tiempo de ejecución mediante su identidad (sin contraseñas).
 
+### Key Vault — Control Plane vs Data Plane
+En Key Vault hay dos capas de permisos:
+- **Control plane**: crear/borrar/configurar el recurso (por ejemplo, rol `Owner` en suscripción).
+- **Data plane**: leer/escribir **secretos, claves y certificados** dentro del vault (por ejemplo, `Key Vault Administrator`, `Key Vault Secrets Officer`, etc.).
+
+Ser `Owner` de suscripción no siempre implica acceso total al contenido del vault cuando está usando RBAC de data plane.
+
 ### KQL — Kusto Query Language
 El lenguaje para consultar los logs en Log Analytics. Similar a SQL pero optimizado para datos de series de tiempo y logs. Ejemplo: "dame todos los pods de AKS que fallaron en las últimas 24 horas".
 
@@ -222,6 +229,8 @@ Una solicitud para mezclar ("mergear") el código de una rama con la rama `main`
 
 ### RBAC — Role-Based Access Control
 Sistema de permisos de Azure. En lugar de dar acceso total a alguien, le asignas un **rol** específico (como "Contributor", "Reader", "Storage Blob Data Contributor") sobre un **scope** específico (suscripción, resource group, o un recurso concreto). Principio de mínimo privilegio: solo los permisos estrictamente necesarios.
+
+En Key Vault con red privada también aplica una segunda condición: aunque tengas RBAC correcto, si `publicNetworkAccess = Disabled` solo podrás operar desde una red permitida (Private Endpoint/VNet/VPN/jumpbox) o abriendo acceso público temporalmente para pruebas.
 
 ### README
 El archivo `README.md` en la raíz del repositorio. Es la "portada" del proyecto: explica qué es, cómo funciona y cómo usarlo. GitHub lo muestra automáticamente al entrar al repositorio.

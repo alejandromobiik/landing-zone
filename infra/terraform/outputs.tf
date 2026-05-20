@@ -149,3 +149,18 @@ output "kubelet_identity_object_id" {
   description = "Object ID de la kubelet identity de AKS. Usar para asignar roles RBAC adicionales (ej: Key Vault Secrets User)."
   value       = module.aks.kubelet_identity_object_id
 }
+
+output "aks_oidc_issuer_url" {
+  description = "URL del emisor OIDC del cluster AKS. Necesaria para crear Federation Credentials de Workload Identity en Fase 5 del plan de trabajo (permite que los pods se autentiquen ante Azure sin contraseñas)."
+  value       = module.aks.oidc_issuer_url
+}
+
+output "workload_app_identity_client_id" {
+  description = "Client ID (appId) de la User-Assigned Managed Identity del workload. Anótalo en el ServiceAccount de Kubernetes: azure.workload.identity/client-id."
+  value       = azurerm_user_assigned_identity.workload_app.client_id
+}
+
+output "workload_app_identity_id" {
+  description = "ARM Resource ID de la Managed Identity del workload."
+  value       = azurerm_user_assigned_identity.workload_app.id
+}

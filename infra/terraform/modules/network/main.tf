@@ -9,7 +9,7 @@
 #   └── NSG hub                             → bloquea tráfico de internet
 #
 #   VNet Spoke (10.1.0.0/16) — en rg-spoke-app-lz-dev
-#   ├── subnet-aks (10.1.1.0/22)           → nodos del clúster AKS
+#   ├── subnet-aks (10.1.0.0/22)           → nodos del clúster AKS
 #   ├── subnet-private-endpoints (10.1.10.0/24) → ACR, Key Vault
 #   └── NSG spoke                           → least-privilege
 #

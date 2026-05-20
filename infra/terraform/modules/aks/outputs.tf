@@ -37,3 +37,24 @@ output "kube_config" {
   value       = azurerm_kubernetes_cluster.main.kube_config_raw
   sensitive   = true
 }
+
+# -----------------------------------------------------------------------------
+# Outputs para Workload Identity Federation
+#
+# Para que un pod se autentique ante Azure usando Workload Identity, hace falta:
+#   1. Una User-Assigned Managed Identity en Azure (creada en Fase 5)
+#   2. Una Federation Credential que confíe en este OIDC issuer
+#   3. Un ServiceAccount de Kubernetes con la anotación correcta
+#
+# Estos outputs se usan en los pasos 1 y 2 (federation credential).
+# -----------------------------------------------------------------------------
+
+output "oidc_issuer_url" {
+  description = "URL del emisor OIDC del cluster AKS. Se usa para crear Federation Credentials que permiten que los pods se autentiquen ante Azure sin contraseñas."
+  value       = azurerm_kubernetes_cluster.main.oidc_issuer_url
+}
+
+output "user_node_pool_name" {
+  description = "Nombre del user node pool (donde corren las aplicaciones del usuario)."
+  value       = azurerm_kubernetes_cluster_node_pool.user.name
+}

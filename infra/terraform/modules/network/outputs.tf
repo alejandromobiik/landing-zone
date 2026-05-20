@@ -75,3 +75,17 @@ output "private_dns_zone_aks_id" {
   description = "ID de la Private DNS Zone para AKS (privatelink.eastus2.azmk8s.io)."
   value       = azurerm_private_dns_zone.aks.id
 }
+
+# -----------------------------------------------------------------------------
+# NSGs — necesarios para Diagnostic Settings (Fase 6)
+# -----------------------------------------------------------------------------
+
+output "nsg_hub_id" {
+  description = "ARM Resource ID del NSG del hub. Para enviar logs del NSG al Log Analytics Workspace."
+  value       = azurerm_network_security_group.hub.id
+}
+
+output "nsg_spoke_id" {
+  description = "ARM Resource ID del NSG del spoke."
+  value       = azurerm_network_security_group.spoke.id
+}

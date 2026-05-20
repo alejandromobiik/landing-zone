@@ -67,6 +67,14 @@ Si devuelve algo, revisa si es un nombre de variable (aceptable) o un valor real
 
 ---
 
+### R-05 · Ahorro de costos con scripts `cost-down-off` / `cost-down-on`
+
+**Regla:** Para parar compute de AKS y opcionalmente vaciar imágenes ACR sin tocar Terraform state, usa los scripts en `scripts/` y el runbook [runbook-cost-shutdown.md](runbook-cost-shutdown.md). No mezcles `terraform apply` con `cost-down-off` sin coordinación.
+
+**Razón:** Evita drift, pérdida de estado en `stlztf*` y pods en CrashLoop si ACR quedó vacío sin redeploy.
+
+---
+
 ## Errores de Azure / Terraform
 
 ### E-01 · `terraform plan` se cuelga en "Acquiring state lock"

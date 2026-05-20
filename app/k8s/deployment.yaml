@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lz-app
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: lz-app
+  template:
+    metadata:
+      labels:
+        app: lz-app
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: lz-app-sa
+      containers:
+        - name: app
+          image: acrlzdev66635.azurecr.io/lz-app:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: KEYVAULT_URI
+              value: "https://kv-lz-dev-66635.vault.azure.net/"
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "250m"
+            limits:
+              memory: "128Mi"
+              cpu: "500m"

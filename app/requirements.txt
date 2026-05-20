@@ -1,0 +1,4 @@
+flask==3.0.3
+azure-keyvault-secrets==4.8.0
+azure-identity==1.17.1
+gunicorn==22.0.0
